@@ -1,22 +1,34 @@
 import React, { useState } from 'react';
-import { DndContext, DragEndEvent, useSensor, useSensors, PointerSensor } from '@dnd-kit/core';
+import { DndContext, DragEndEvent, DragStartEvent, useSensor, useSensors, PointerSensor, TouchSensor } from '@dnd-kit/core';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { CalendarDay } from './CalendarDay';
+import { DragOverlay } from '../DragOverlay';
 import type { Todo } from '../../types/todo';
+import { useTheme } from '../theme/ThemeProvider';
 
 interface CalendarViewProps {
   todos: Todo[];
   onUpdateTodo: (id: string, updates: Partial<Todo>) => Promise<void>;
   onAddTodo: (todo: Partial<Todo>) => Promise<void>;
+  onDeleteTodo: (id: string) => Promise<void>;
 }
 
-export function CalendarView({ todos, onUpdateTodo, onAddTodo }: CalendarViewProps) {
+export function CalendarView({ todos, onUpdateTodo, onAddTodo, onDeleteTodo }: CalendarViewProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [activeTodo, setActiveTodo] = useState<Todo | null>(null);
+  const { theme } = useTheme();
+  const isDarkMode = theme === 'dark';
   
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
         distance: 8,
+      },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 200,
+        tolerance: 5,
       },
     })
   );
@@ -48,8 +60,17 @@ export function CalendarView({ todos, onUpdateTodo, onAddTodo }: CalendarViewPro
     });
   };
 
+  const handleDragStart = (event: DragStartEvent) => {
+    const todoId = event.active.id as string;
+    const todo = todos.find(t => t.id === todoId);
+    if (todo) {
+      setActiveTodo(todo);
+    }
+  };
+
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
+    setActiveTodo(null);
     
     if (!over) return;
 
@@ -71,63 +92,111 @@ export function CalendarView({ todos, onUpdateTodo, onAddTodo }: CalendarViewPro
     });
   };
 
-  const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const monthYear = currentDate.toLocaleString('default', { 
+  const weekDays = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'];
+  const monthYear = currentDate.toLocaleString('tr-TR', { 
     month: 'long', 
     year: 'numeric' 
   });
 
   return (
-    <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-      <div className="select-none bg-white dark:bg-dark-900 p-6 rounded-lg shadow-lg">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-            {monthYear}
-          </h2>
-          <div className="flex space-x-2">
-            <button
-              onClick={() => navigateMonth('prev')}
-              className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-dark-700 
-                       text-gray-600 dark:text-gray-400"
-            >
-              <ChevronLeft className="w-5 h-5" />
-            </button>
-            <button
-              onClick={() => navigateMonth('next')}
-              className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-dark-700 
-                       text-gray-600 dark:text-gray-400"
-            >
-              <ChevronRight className="w-5 h-5" />
-            </button>
+    <DndContext 
+      sensors={sensors} 
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+    >
+      <div className={`
+        select-none rounded-xl shadow-lg overflow-hidden
+        ${isDarkMode ? 'bg-gray-900 text-white' : 'bg-white'}
+        border ${isDarkMode ? 'border-gray-800' : 'border-gray-200'}
+      `}>
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className={`
+              text-2xl font-semibold
+              ${isDarkMode ? 'text-white' : 'text-gray-900'}
+            `}>
+              {monthYear}
+            </h2>
+            <div className="flex space-x-2">
+              <button
+                onClick={() => navigateMonth('prev')}
+                className={`
+                  p-2 rounded-lg transition-colors
+                  ${isDarkMode 
+                    ? 'hover:bg-gray-800 text-gray-400 hover:text-gray-200' 
+                    : 'hover:bg-gray-100 text-gray-600 hover:text-gray-900'
+                  }
+                `}
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+              <button
+                onClick={() => navigateMonth('next')}
+                className={`
+                  p-2 rounded-lg transition-colors
+                  ${isDarkMode 
+                    ? 'hover:bg-gray-800 text-gray-400 hover:text-gray-200' 
+                    : 'hover:bg-gray-100 text-gray-600 hover:text-gray-900'
+                  }
+                `}
+              >
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-7 gap-1 mb-2">
+            {weekDays.map(day => (
+              <div 
+                key={day} 
+                className={`
+                  text-center text-sm font-medium py-2
+                  ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}
+                `}
+              >
+                {day}
+              </div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-7 gap-1">
+            {calendar.map((day, i) => (
+              <CalendarDay
+                key={i}
+                day={day}
+                isToday={
+                  day === today.getDate() &&
+                  currentDate.getMonth() === today.getMonth() &&
+                  currentDate.getFullYear() === today.getFullYear()
+                }
+                todos={day ? getTodosForDay(day) : []}
+                onAddTask={(todo) => onAddTodo({ 
+                  ...todo, 
+                  dueDate: new Date(
+                    currentDate.getFullYear(),
+                    currentDate.getMonth(),
+                    day as number
+                  )
+                })}
+                onEditTask={(todoId) => {
+                  const todo = todos.find(t => t.id === todoId);
+                  if (todo) {
+                    onUpdateTodo(todoId, { ...todo });
+                  }
+                }}
+                onDeleteTask={onDeleteTodo}
+                isDarkMode={isDarkMode}
+                isDragging={!!activeTodo}
+              />
+            ))}
           </div>
         </div>
-
-        <div className="grid grid-cols-7 gap-1 mb-2">
-          {weekDays.map(day => (
-            <div key={day} className="text-center text-sm font-medium text-gray-500 dark:text-gray-400 py-2">
-              {day}
-            </div>
-          ))}
-        </div>
-
-        <div className="grid grid-cols-7 gap-1">
-          {calendar.map((day, i) => (
-            <CalendarDay
-              key={i}
-              day={day}
-              month={currentDate.getMonth()}
-              year={currentDate.getFullYear()}
-              isToday={
-                day === today.getDate() &&
-                currentDate.getMonth() === today.getMonth() &&
-                currentDate.getFullYear() === today.getFullYear()
-              }
-              todos={day ? getTodosForDay(day) : []}
-              onAddTask={onAddTodo}
-            />
-          ))}
-        </div>
       </div>
+
+      <DragOverlay
+        activeTodo={activeTodo}
+        isDarkMode={isDarkMode}
+      />
     </DndContext>
   );
 }

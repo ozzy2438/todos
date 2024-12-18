@@ -1,54 +1,91 @@
-import { useState, useMemo } from 'react';
-import type { Todo } from '../../types/todo';
+import { useState, useMemo, useCallback } from 'react';
+import type { Todo } from '../types/todo';
 
 export function useTodoFilters(todos: Todo[]) {
-  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
+  const [category, setCategory] = useState<string | null>(null);
   const [timeFrame, setTimeFrame] = useState<'today' | 'week' | 'month' | null>(null);
-  const [statusFilter, setStatusFilter] = useState<'completed' | 'active' | null>(null);
+  const [status, setStatus] = useState<'completed' | 'active' | null>(null);
 
   const filteredTodos = useMemo(() => {
     return todos.filter(todo => {
-      const matchesCategory = !categoryFilter || todo.category === categoryFilter;
-      const matchesStatus = !statusFilter || 
-        (statusFilter === 'completed' ? todo.completed : !todo.completed);
-      
-      let matchesTimeFrame = true;
+      // Kategori filtresi
+      if (category && todo.category !== category) {
+        return false;
+      }
+
+      // Durum filtresi
+      if (status === 'completed' && !todo.completed) {
+        return false;
+      }
+      if (status === 'active' && todo.completed) {
+        return false;
+      }
+
+      // Zaman filtresi
       if (timeFrame) {
         const today = new Date();
-        const dueDate = new Date(todo.dueDate);
+        const todoDate = new Date(todo.dueDate);
         
+        // Bugünün başlangıcı
+        const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        
+        // Bugünün sonu
+        const endOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59);
+        
+        // Haftanın sonu
+        const endOfWeek = new Date(today);
+        endOfWeek.setDate(today.getDate() + 7);
+        endOfWeek.setHours(23, 59, 59);
+        
+        // Ayın sonu
+        const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59);
+
         switch (timeFrame) {
           case 'today':
-            matchesTimeFrame = dueDate.toDateString() === today.toDateString();
+            if (todoDate < startOfToday || todoDate > endOfToday) {
+              return false;
+            }
             break;
           case 'week':
-            const weekFromNow = new Date(today);
-            weekFromNow.setDate(today.getDate() + 7);
-            matchesTimeFrame = dueDate <= weekFromNow && dueDate >= today;
+            if (todoDate < startOfToday || todoDate > endOfWeek) {
+              return false;
+            }
             break;
           case 'month':
-            const monthFromNow = new Date(today);
-            monthFromNow.setMonth(today.getMonth() + 1);
-            matchesTimeFrame = dueDate <= monthFromNow && dueDate >= today;
+            if (todoDate < startOfToday || todoDate > endOfMonth) {
+              return false;
+            }
             break;
         }
       }
 
-      return matchesCategory && matchesStatus && matchesTimeFrame;
+      return true;
     });
-  }, [todos, categoryFilter, timeFrame, statusFilter]);
+  }, [todos, category, timeFrame, status]);
+
+  const handleSetCategory = useCallback((newCategory: string | null) => {
+    setCategory(prev => prev === newCategory ? null : newCategory);
+  }, []);
+
+  const handleSetTimeFrame = useCallback((newTimeFrame: 'today' | 'week' | 'month' | null) => {
+    setTimeFrame(prev => prev === newTimeFrame ? null : newTimeFrame);
+  }, []);
+
+  const handleSetStatus = useCallback((newStatus: 'completed' | 'active' | null) => {
+    setStatus(prev => prev === newStatus ? null : newStatus);
+  }, []);
 
   return {
     filteredTodos,
     filters: {
-      category: categoryFilter,
+      category,
       timeFrame,
-      status: statusFilter
+      status,
     },
     setFilters: {
-      setCategory: setCategoryFilter,
-      setTimeFrame,
-      setStatus: setStatusFilter
-    }
+      setCategory: handleSetCategory,
+      setTimeFrame: handleSetTimeFrame,
+      setStatus: handleSetStatus,
+    },
   };
 }
